@@ -6,7 +6,7 @@ module.exports = {
             host: '127.0.0.1',
             port: 5432,
             user: 'postgres',
-            password: 'Gif232@',
+            password: '',
             database: 'barriga',
         },
         migrations: {
@@ -15,5 +15,5 @@ module.exports = {
         seeds: { 
             directory: './src/seeds',
         },
-    },
+    }
 };

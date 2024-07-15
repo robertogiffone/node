@@ -1,60 +1,86 @@
 const request = require('supertest');
+const jwt = require('jwt-simple');
 
 const app = require('../../src/app');
 
+const MAIN_ROUTE = '/v1/users';
 const mail = `${Date.now()}@mail.com`;
+let user;
 
-const MAIN_ROUTE = '/users';
-
-test('Deve listar todos os usuários', () =>{
-    return request(app).get(MAIN_ROUTE)
-        .then((res) => {
-            expect(res.status).toBe(200);
-            expect(res.body.length).toBeGreaterThanOrEqual(0);
-        });
+beforeAll(async () => {
+  const res = await app.services.user.save({ name: 'User Account', email: `${Date.now()}@mail.com`, passwd: '123456' });
+  user = { ...res[0] };
+  user.token = jwt.encode(user, 'Segredo!');
 });
 
-test('Deve inserir usuário com sucesso', () =>{
-    return request(app).post(MAIN_ROUTE)
-        .send({name: 'Daniel', email: mail, passwd: '123456'})
-        .then((res) => {
-            expect(res.status).toBe(201);
-            expect(res.body.name).toBe('Daniel');
-        });
+test('Deve listar todos os usuários', () => {
+  return request(app).get(MAIN_ROUTE)
+    .set('authorization', `bearer ${user.token}`)
+    .then((res) => {
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBeGreaterThanOrEqual(0);
+    });
+});
+
+test('Deve inserir usuário com sucesso', () => {
+  return request(app).post(MAIN_ROUTE)
+    .send({ name: 'Daniel', email: mail, passwd: '123456' })
+    .set('authorization', `bearer ${user.token}`)
+    .then((res) => {
+      expect(res.status).toBe(201);
+      expect(res.body.name).toBe('Daniel');
+      expect(res.body).not.toHaveProperty('passwd');
+    });
+});
+
+test('Deve armazenar senha criptografada', async () => {
+  const res = await request(app).post(MAIN_ROUTE)
+    .send({ name: 'Walter Mitty', email: `${Date.now()}@mail.com`, passwd: '123456' })
+    .set('authorization', `bearer ${user.token}`);
+  expect(res.status).toBe(201);
+
+  const { id } = res.body;
+  const userDB = await app.services.user.findOne({ id });
+  expect(userDB.passwd).not.toBeUndefined();
+  expect(userDB.passwd).not.toBe('123456');
 });
 
 test('Não deve inserir usuário sem nome', () => {
-    return request(app).post(MAIN_ROUTE)
-      .send({ email: 'teste@mail.com', passwd: '123456' })
-      .then((res) => {
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe('Nome é um atributo obrigatório');
-      });
+  return request(app).post(MAIN_ROUTE)
+    .send({ email: 'teste@mail.com', passwd: '123456' })
+    .set('authorization', `bearer ${user.token}`)
+    .then((res) => {
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Nome é um atributo obrigatório');
+    });
 });
 
 test('Não deve inserir usuário sem email', async () => {
-    const result = await request(app).post(MAIN_ROUTE)
-        .send({ name: 'Roberto Giffone', passwd: '123456' })
-    expect(result.status).toBe(400);
-    expect(result.body.error).toBe('E-mail é um atributo obrigatório');
+  const result = await request(app).post(MAIN_ROUTE)
+    .send({ name: 'Roberto Giffone', passwd: '123456' })
+    .set('authorization', `bearer ${user.token}`);
+  expect(result.status).toBe(400);
+  expect(result.body.error).toBe('E-mail é um atributo obrigatório');
 });
-  
+
 test('Não deve inserir usuário sem senha', (done) => {
-    request(app).post(MAIN_ROUTE)
-        .send({ name: 'Roberto Giffone', email: 'roberto@mail.com' })
-        .then((res) => {
-            expect(res.status).toBe(400);
-            expect(res.body.error).toBe('Senha é um atributo obrigatório');
-            done();
-        })
-        .catch(err => done.fail(err));
+  request(app).post(MAIN_ROUTE)
+    .send({ name: 'Roberto Giffone', email: 'roberto@mail.com' })
+    .set('authorization', `bearer ${user.token}`)
+    .then((res) => {
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Senha é um atributo obrigatório');
+      done();
+    })
+    .catch((err) => done.fail(err));
 });
 
 test('Não deve inserir usuário com email existente', () => {
-    return request(app).post(MAIN_ROUTE)
-      .send({ name: 'Daniel', email: mail, passwd: '123456' })
-      .then((res) => {
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe('Já existe um usuário com esse e-mail');
-      });
+  return request(app).post(MAIN_ROUTE)
+    .send({ name: 'Daniel', email: mail, passwd: '123456' })
+    .set('authorization', `bearer ${user.token}`)
+    .then((res) => {
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Já existe um usuário com esse e-mail');
+    });
 });
